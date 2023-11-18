@@ -44,10 +44,12 @@ import { ITestingPeekOpener } from 'vs/workbench/contrib/testing/common/testingP
 import { LifecyclePhase } from 'vs/workbench/services/lifecycle/common/lifecycle';
 import { allTestActions, discoverAndRunTests } from './testExplorerActions';
 import './testingConfigurationUi';
+import { ITestCoverageService, TestCoverageService } from 'vs/workbench/contrib/testing/common/testCoverageService';
 
 registerSingleton(ITestService, TestService, InstantiationType.Delayed);
 registerSingleton(ITestResultStorage, TestResultStorage, InstantiationType.Delayed);
 registerSingleton(ITestProfileService, TestProfileService, InstantiationType.Delayed);
+registerSingleton(ITestCoverageService, TestCoverageService, InstantiationType.Delayed);
 registerSingleton(ITestingContinuousRunService, TestingContinuousRunService, InstantiationType.Delayed);
 registerSingleton(ITestResultService, TestResultService, InstantiationType.Delayed);
 registerSingleton(ITestExplorerFilterState, TestExplorerFilterState, InstantiationType.Delayed);

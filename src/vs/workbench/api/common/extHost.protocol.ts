@@ -2617,12 +2617,12 @@ export interface ExtHostTestingShape {
 	/** Expands a test item's children, by the given number of levels. */
 	$expandTest(testId: string, levels: number): Promise<void>;
 	/** Requests file coverage for a test run. Errors if not available. */
-	$provideFileCoverage(runId: string, taskId: string, token: CancellationToken): Promise<Dto<IFileCoverage[]>>;
+	$provideFileCoverage(runId: string, taskId: string, token: CancellationToken): Promise<IFileCoverage.Serialized[]>;
 	/**
 	 * Requests coverage details for the file index in coverage data for the run.
 	 * Requires file coverage to have been previously requested via $provideFileCoverage.
 	 */
-	$resolveFileCoverage(runId: string, taskId: string, fileIndex: number, token: CancellationToken): Promise<CoverageDetails[]>;
+	$resolveFileCoverage(runId: string, taskId: string, fileIndex: number, token: CancellationToken): Promise<CoverageDetails.Serialized[]>;
 	/** Configures a test run config. */
 	$configureRunProfile(controllerId: string, configId: number): void;
 	/** Asks the controller to refresh its tests */

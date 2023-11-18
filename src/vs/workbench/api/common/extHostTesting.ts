@@ -234,17 +234,19 @@ export class ExtHostTesting extends Disposable implements ExtHostTestingShape {
 	/**
 	 * @inheritdoc
 	 */
-	$provideFileCoverage(runId: string, taskId: string, token: CancellationToken): Promise<IFileCoverage[]> {
+	async $provideFileCoverage(runId: string, taskId: string, token: CancellationToken): Promise<IFileCoverage.Serialized[]> {
 		const coverage = mapFindFirst(this.runTracker.trackers, t => t.id === runId ? t.getCoverage(taskId) : undefined);
-		return coverage?.provideFileCoverage(token) ?? Promise.resolve([]);
+		const fileCoverage = await coverage?.provideFileCoverage(token);
+		return fileCoverage ?? [];
 	}
 
 	/**
 	 * @inheritdoc
 	 */
-	$resolveFileCoverage(runId: string, taskId: string, fileIndex: number, token: CancellationToken): Promise<CoverageDetails[]> {
+	async $resolveFileCoverage(runId: string, taskId: string, fileIndex: number, token: CancellationToken): Promise<CoverageDetails.Serialized[]> {
 		const coverage = mapFindFirst(this.runTracker.trackers, t => t.id === runId ? t.getCoverage(taskId) : undefined);
-		return coverage?.resolveFileCoverage(fileIndex, token) ?? Promise.resolve([]);
+		const details = await coverage?.resolveFileCoverage(fileIndex, token);
+		return details ?? [];
 	}
 
 	/** @inheritdoc */
@@ -821,7 +823,7 @@ class TestRunCoverageBearer {
 	) {
 	}
 
-	public async provideFileCoverage(token: CancellationToken): Promise<IFileCoverage[]> {
+	public async provideFileCoverage(token: CancellationToken): Promise<IFileCoverage.Serialized[]> {
 		if (!this._coverageProvider) {
 			return [];
 		}
@@ -839,7 +841,7 @@ class TestRunCoverageBearer {
 		}
 	}
 
-	public async resolveFileCoverage(index: number, token: CancellationToken): Promise<CoverageDetails[]> {
+	public async resolveFileCoverage(index: number, token: CancellationToken): Promise<CoverageDetails.Serialized[]> {
 		const fileCoverage = await this.fileCoverage;
 		let file = fileCoverage?.[index];
 		if (!this._coverageProvider || !fileCoverage || !file) {

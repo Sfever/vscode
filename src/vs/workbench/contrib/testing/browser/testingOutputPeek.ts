@@ -28,6 +28,7 @@ import { KeyCode, KeyMod } from 'vs/base/common/keyCodes';
 import { Lazy } from 'vs/base/common/lazy';
 import { Disposable, DisposableStore, IDisposable, IReference, MutableDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { MarshalledId } from 'vs/base/common/marshallingIds';
+import { autorun } from 'vs/base/common/observable';
 import { count } from 'vs/base/common/strings';
 import { ThemeIcon } from 'vs/base/common/themables';
 import { isDefined } from 'vs/base/common/types';
@@ -86,6 +87,7 @@ import { AutoOpenPeekViewWhen, TestingConfigKeys, getTestingConfiguration } from
 import { Testing } from 'vs/workbench/contrib/testing/common/constants';
 import { IObservableValue, MutableObservableValue, staticObservableValue } from 'vs/workbench/contrib/testing/common/observableValue';
 import { StoredValue } from 'vs/workbench/contrib/testing/common/storedValue';
+import { TestCoverage } from 'vs/workbench/contrib/testing/common/testCoverage';
 import { ITestExplorerFilterState } from 'vs/workbench/contrib/testing/common/testExplorerFilterState';
 import { ITestProfileService } from 'vs/workbench/contrib/testing/common/testProfileService';
 import { ITaskRawOutput, ITestResult, ITestRunTaskResults, LiveTestResult, TestResultItemChange, TestResultItemChangeReason, maxCountPriority, resultItemParents } from 'vs/workbench/contrib/testing/common/testResult';
@@ -1666,6 +1668,24 @@ class TestResultElement implements ITreeElement {
 	constructor(public readonly value: ITestResult) { }
 }
 
+const coverageLabel = localize('openTestCoverage', 'View Test Coverage');
+
+class CoverageElement implements ITreeElement {
+	public readonly type = 'coverage';
+	public readonly context: undefined;
+	public readonly id = `coverage-${this.results.id}/${this.task.id}`;
+	public readonly label = coverageLabel;
+	public readonly onDidChange = Event.None;
+	public readonly icon = icons.testingCoverage;
+
+	constructor(
+		private readonly results: ITestResult,
+		private readonly task: ITestRunTask,
+		public readonly coverage: TestCoverage,
+	) { }
+
+}
+
 class TestCaseElement implements ITreeElement {
 	public readonly type = 'test';
 	public readonly context = this.test.item.extId;
@@ -1721,7 +1741,7 @@ class TaskElement implements ITreeElement {
 		return this.results.tasks[this.index].running ? icons.testingStatesToIcons.get(TestResultState.Running) : undefined;
 	}
 
-	constructor(public readonly results: ITestResult, public readonly task: ITestRunTask, public readonly index: number) {
+	constructor(public readonly results: ITestResult, public readonly task: ITestRunTaskResults, public readonly index: number) {
 		this.id = `${results.id}/${index}`;
 		this.task = results.tasks[index];
 		this.context = String(index);
@@ -1788,7 +1808,7 @@ class TestMessageElement implements ITreeElement {
 	}
 }
 
-type TreeElement = TestResultElement | TestCaseElement | TestMessageElement | TaskElement;
+type TreeElement = TestResultElement | TestCaseElement | TestMessageElement | TaskElement | CoverageElement;
 
 class OutputPeekTree extends Disposable {
 	private disposed = false;
@@ -1851,13 +1871,25 @@ class OutputPeekTree extends Disposable {
 
 		const cc = new CreationCache<TreeElement>();
 		const getTaskChildren = (taskElem: TaskElement): Iterable<ICompressedTreeElement<TreeElement>> => {
-			const tests = Iterable.filter(taskElem.results.tests, test => test.tasks[taskElem.index].state >= TestResultState.Running || test.tasks[taskElem.index].messages.length > 0);
-
-			return Iterable.map(tests, test => ({
-				element: taskElem.itemsCache.getOrCreate(test, () => new TestCaseElement(taskElem.results, taskElem.task, test, taskElem.index)),
+			const { results, index, itemsCache, task } = taskElem;
+			const tests = Iterable.filter(results.tests, test => test.tasks[index].state >= TestResultState.Running || test.tasks[index].messages.length > 0);
+			let result: Iterable<ICompressedTreeElement<TreeElement>> = Iterable.map(tests, test => ({
+				element: itemsCache.getOrCreate(test, () => new TestCaseElement(results, task, test, index)),
 				incompressible: true,
-				children: getTestChildren(taskElem.results, test, taskElem.index),
+				children: getTestChildren(results, test, index),
 			}));
+
+			const coverage = task.coverage.get();
+			if (coverage) {
+				result = Iterable.concat(
+					Iterable.single<ICompressedTreeElement<TreeElement>>({
+						element: new CoverageElement(results, task, coverage),
+					}),
+					result,
+				);
+			}
+
+			return result;
 		};
 
 		const getTestChildren = (result: ITestResult, test: TestResultItem, taskIndex: number): Iterable<ICompressedTreeElement<TreeElement>> => {
@@ -1902,11 +1934,17 @@ class OutputPeekTree extends Disposable {
 			}
 			taskChildrenToUpdate.clear();
 		}, 300));
+		const queueTaskChildrenUpdate = (taskNode: TaskElement) => {
+			taskChildrenToUpdate.add(taskNode);
+			if (!taskChildrenUpdate.isScheduled()) {
+				taskChildrenUpdate.schedule();
+			}
+		};
 
 		const attachToResults = (result: LiveTestResult) => {
 			const resultNode = cc.get(result)! as TestResultElement;
 			const disposable = new DisposableStore();
-			disposable.add(result.onNewTask(() => {
+			disposable.add(result.onNewTask(i => {
 				if (result.tasks.length === 1) {
 					this.requestReveal.fire(new TaskSubject(result, 0)); // reveal the first task in new runs
 				}
@@ -1914,6 +1952,14 @@ class OutputPeekTree extends Disposable {
 				if (this.tree.hasElement(resultNode)) {
 					this.tree.setChildren(resultNode, getResultChildren(result), { diffIdentityProvider });
 				}
+
+				// note: tasks are bounded and their lifetime is equivalent to that of
+				// the test result, so this doesn't leak indefinitely.
+				const task = result.tasks[i];
+				disposable.add(autorun(reader => {
+					task.coverage.read(reader); // add it to the autorun
+					queueTaskChildrenUpdate(cc.get(task) as TaskElement);
+				}));
 			}));
 			disposable.add(result.onEndTask(index => {
 				(cc.get(result.tasks[index]) as TaskElement | undefined)?.changeEmitter.fire();
@@ -1935,10 +1981,7 @@ class OutputPeekTree extends Disposable {
 						return;
 					}
 
-					taskChildrenToUpdate.add(taskNode);
-					if (!taskChildrenUpdate.isScheduled()) {
-						taskChildrenUpdate.schedule();
-					}
+					queueTaskChildrenUpdate(taskNode);
 				}
 			}));
 
