@@ -1,0 +1,3 @@
+65208ff1052f228a4c3fbe3d7229707a880a9a725ac3dae4dd6f41d2be3bbea7  aarch64-vscode-linux-gnu.tar.gz
+879b625bca5ca4635f9bd31d910fc324d5e4591ed6ef4b36ebd184a3003b6125  arm-vscode-linux-gnueabihf.tar.gz
+046dd9a1e285d43d8377b6f0a9becd4f42ae30e3f74a6852e10c92a3a6a01c0b  x86_64-vscode-linux-gnu.tar.gz

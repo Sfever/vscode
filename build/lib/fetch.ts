@@ -9,6 +9,7 @@ import * as log from 'fancy-log';
 import * as ansiColors from 'ansi-colors';
 import * as crypto from 'crypto';
 import * as through2 from 'through2';
+import * as path from 'path';
 import { Stream } from 'stream';
 
 export interface IFetchOptions {
@@ -16,6 +17,7 @@ export interface IFetchOptions {
 	nodeFetchOptions?: RequestInit;
 	verbose?: boolean;
 	checksumSha256?: string;
+	path?: string;
 }
 
 export function fetchUrls(urls: string[] | string, options: IFetchOptions): es.ThroughStream {
@@ -76,8 +78,8 @@ export async function fetchUrl(url: string, options: IFetchOptions, retries = 10
 				}
 				return new VinylFile({
 					cwd: '/',
-					base: options.base,
-					path: url,
+					base: options.path ? path.dirname(options.path) : options.base,
+					path: options.path ?? url,
 					contents
 				});
 			}
@@ -114,6 +116,7 @@ export interface IGitHubAssetOptions {
 	name: string | ((name: string) => boolean);
 	checksumSha256?: string;
 	verbose?: boolean;
+	path?: string;
 }
 
 /**
@@ -126,6 +129,7 @@ export function fetchGithub(repo: string, options: IGitHubAssetOptions): Stream 
 	return fetchUrls(`/repos/${repo.replace(/^\/|\/$/g, '')}/releases/tags/v${options.version}`, {
 		base: 'https://api.github.com',
 		verbose: options.verbose,
+		path: options.path,
 		nodeFetchOptions: { headers: ghApiHeaders }
 	}).pipe(through2.obj(async function (file, _enc, callback) {
 		const assetFilter = typeof options.name === 'string' ? (name: string) => name === options.name : options.name;
@@ -137,6 +141,7 @@ export function fetchGithub(repo: string, options: IGitHubAssetOptions): Stream 
 			callback(null, await fetchUrl(asset.url, {
 				nodeFetchOptions: { headers: ghDownloadHeaders },
 				verbose: options.verbose,
+				path: options.path,
 				checksumSha256: options.checksumSha256
 			}));
 		} catch (error) {
